@@ -45,19 +45,7 @@ async def create_user(user_request: CreateUserRequest):
     result = users_collection.insert_one(created_user.model_dump(by_alias=True, exclude=["id"]))
     user = users_collection.find_one({"_id":result.inserted_id})
     print("New User Registered")
-    print(user)
     return user
-
-# Upload Images (This function must recieve array of images, process them by adding a text of the image's name in the image and save them to a image database)
-@user_router.put("/{user_id}/projects/{project_id}")
-async def upload_images(project_id:str, images:list[UploadFile] = File(...)):
-    try:
-        # db.
-        print("Received images:", images)
-    except HTTPException as e:
-        print(f"Error uploading images: {e}")
-        return status.HTTP_400_BAD_REQUEST
-
 
 @user_router.post("/{user_id}/projects")
 async def create_project(user_id:str, project : Project = Body(...)):
@@ -72,13 +60,32 @@ async def create_project(user_id:str, project : Project = Body(...)):
     # Add the project to the user's projects array
     update_result = users_collection.update_one({"_id": user_oid},{"$push": {"projects": project_dict}})
     
-    get_user_from_id(user_id)
+    get_user_model_from_db(user_id)
     
     return project_dict
 
+@user_router.get("/{user_id}/projects")
+async def get_all_projects(user_id:str):
+    user = get_user_model_from_db(user_id)
+    if user:
+        return user.projects
+    else:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+@user_router.get("/{user_id}/projects/{project_id}")
+async def get_project_of_user(user_id:str, project_id:str):
+    user = get_user_model_from_db(user_id)
+    if user:
+        project = next((proj for proj in user.projects if proj.id == project_id), None)
+        if project:
+            return project
+        else:
+            return HTTPException(status_code=404, detail="Project not found")
+    else:
+        raise HTTPException(status_code=404, detail="User not found")
+
 @user_router.delete("/{user_id}/projects/{project_id}")
 async def delete_project(user_id:str, project_id:str):
-    
     try:
         user_oid = ObjectId(user_id)  
         project_oid = ObjectId(project_id)
@@ -90,33 +97,32 @@ async def delete_project(user_id:str, project_id:str):
         raise HTTPException(status_code=404, detail="User or project not found")
     
     # Retrieve the updated user to return
-    updated_user = get_user_from_id(user_id)
+    updated_user = get_user_model_from_db(user_id)
     
     return updated_user
 
 @user_router.post("/{user_id}/projects/{project_id}")
-async def upload_images_to_project(user_id: str, project_id: str, files: list[UploadFile] = File(...)):
+async def upload_images_to_project(user_id: str, project_id: str, images: list[UploadFile] = File(...)):
     try:
         user_oid = ObjectId(user_id)  # Convert string user_id to ObjectId
     except Exception as e:
         raise HTTPException(status_code=400, detail="Invalid ID format")
     
-    user = get_user_from_id(user_id)
+    user = get_user_model_from_db(user_id)
     if user is None:
         return HTTPException(status_code=404, detail="User not found")
     
-    user_dict = user.model_dump(by_alias=True)
 
     try:
-        project = next((proj for proj in user_dict['projects'] if proj['_id'] == project_id), None)
+        project = next((proj for proj in user.projects if proj.id == project_id), None)
     except:
-        print("here is error")
+        print("project not found")
 
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
     image_urls = []
-    for file in files:
+    for file in images:
         try:
             result = cloudinary.uploader.upload(file.file)
             image_urls.append(result['secure_url'])
@@ -132,6 +138,88 @@ async def upload_images_to_project(user_id: str, project_id: str, files: list[Up
         raise HTTPException(status_code=404, detail="Project not found")
     
     # Retrieve the updated user to return
-    updated_user = get_user_from_id(user_id)
+    updated_user = get_user_model_from_db(user_id)
+    if updated_user is None:
+        return HTTPException(status_code=404, detail="User not found")
+    print(updated_user)
+    project = next((proj for proj in updated_user.projects if proj.id == project_id), None)
+    print(project)
+    return project
+
+@user_router.delete("/{user_id}/projects/{project_id}")
+async def delete_all_images(user_id:str, project_id:str):
+    try:
+        user_oid = ObjectId(user_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail = "Invaild user id format")
     
-    return updated_user
+    user = get_user_model_from_db(user_id)
+    if user is None:
+        return HTTPException(status_code=404, detail="User not found")
+    
+    user_dict = user.model_dump(by_alias=True)
+
+    try:
+        project = next((proj for proj in user_dict['projects'] if proj['_id'] == project_id), None)
+    except:
+        print("project not found")
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Update the specific project to clear images
+    update_result = users_collection.update_one(
+        {"_id": user_id, "projects.id": project_id},
+        {"$set": {"projects.$.images": []}}
+    )
+
+    if update_result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Retrieve the updated user to return
+    get_user_model_from_db(user_id)
+    
+    return project
+
+@user_router.delete("/{user_id}/projects/{project_id}/{index}")
+async def delete_image_in_project(user_id:str, project_id:str, index:int):
+    try:
+        user_oid = ObjectId(user_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail = "Invaild user id format")
+    
+    user = get_user_model_from_db(user_id)
+    if user is None:
+        return HTTPException(status_code=404, detail="User not found")
+    
+    user_dict = user.model_dump(by_alias=True)
+    # print(user.projects[0].id == project_id)
+    
+    try:
+        project = next((proj for proj in user.projects if proj.id == project_id), None)
+    except:
+        print("project not found")
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Check if the image index is within bounds
+    if index < 0 or project.images and index >= len(project.images):
+        raise HTTPException(status_code=400, detail="Invalid image index")
+
+    if project.images: del project.images[index]
+
+
+    # Update the specific project to clear images
+    result = users_collection.update_one(
+        {"_id": user_oid, "projects._id": project_id},
+        {"$set": {"projects.$.images": project.images}}
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Project couldn't be updated")
+    
+    if project.images:
+        print(len(project.images))
+
+    return project

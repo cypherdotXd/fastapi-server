@@ -7,6 +7,8 @@ PyObjectId = Annotated[str, BeforeValidator(str)]
 class Project(BaseModel):
     id:Optional[PyObjectId] = Field(alias="_id", default=ObjectId)
     name:str = Field(...)
+    # description:Optional[str] = Field()
+    # createdAt:str = 
     images:Optional[list[str]] = []
     results:Optional[list[Any]] = []
     class Config:

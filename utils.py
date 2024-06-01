@@ -1,8 +1,8 @@
 from bson import ObjectId
 from fastapi import HTTPException, status
 from typing import Annotated, Optional, Union
-import bcrypt
 from datetime import datetime, timedelta
+import bcrypt
 import jwt
 from jwt import PyJWTError
 
@@ -10,16 +10,20 @@ from db import *
 from models.user import User
 
 # Utility Functions
-def get_user_from_name(username: str):
+def get_user_from_name(username: str) -> Optional[User]:
     user_dict = users_collection.find_one({"username": username})
     if user_dict:
-        user = User(**user_dict)
-        return user
-    print("no user found")
-    return None
+        try:
+            user = User(**user_dict)
+            return user
+        except Exception as e:
+            print("no user found")
+            raise e
+    else:
+        return None
     
 
-def get_user_from_id(id: str) -> Optional[User]:
+def get_user_model_from_db(id: str) -> Optional[User]:
     user_dict = users_collection.find_one({"_id": ObjectId(id)})
     if user_dict:
         return User(**user_dict)

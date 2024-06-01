@@ -1,0 +1,5 @@
+bcrypt
+pyjwt
+fastapi
+pymongo = python -m pip install "pymongo[srv]"
+cloudinary

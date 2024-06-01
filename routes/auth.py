@@ -31,7 +31,7 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_bearer)]):
     return user
     
 # Login User
-@auth_router.put("/login", response_model=Token)
+@auth_router.put("/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     print("trying log-in")
     user = get_user_from_name(form_data.username)
@@ -40,7 +40,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     try:
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(secret_key=SECRET_KEY, algorithm=ALGORITHM, data={"sub": user.username}, expires_delta=access_token_expires)
-        return Token(access_token=access_token, token_type="bearer")
+        print("login success")
+        return {"id":user.id, "token":Token(access_token=access_token, token_type="bearer")}
+        
     except Exception as e:
         print("error in login")
     return {"message":"Login Failed"}
