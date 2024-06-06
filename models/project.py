@@ -2,6 +2,8 @@ from bson import ObjectId
 from pydantic import BaseModel, BeforeValidator, Field
 from typing import Annotated, Any, Optional
 
+from models.image import Image
+
 PyObjectId = Annotated[str, BeforeValidator(str)]
 
 class Project(BaseModel):
@@ -9,7 +11,8 @@ class Project(BaseModel):
     name:str = Field(...)
     # description:Optional[str] = Field()
     # createdAt:str = 
-    images:Optional[list[str]] = []
+    images:list[Image] = []
+    processed:list[str] = []
     results:Optional[list[Any]] = []
     class Config:
         populate_by_name = True

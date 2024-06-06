@@ -1,13 +1,15 @@
 from fastapi import Body, Depends, HTTPException, UploadFile, File, status, APIRouter
 from pydantic import BaseModel, Field
-from models.user import User
-from models.project import Project
 import cloudinary
 import cloudinary.uploader
 
+from models.user import User
+from models.project import Project
+from models.image import Image as Img
 from routes.auth import get_current_user
 from utils import *
 from db import *
+from age_gender_recognition.age_gender_classifier import *
 
 # Cloudinary configuration
 cloudinary.config(
@@ -23,9 +25,50 @@ class CreateUserRequest(BaseModel):
     password_plain:str = Field(...)
     
 # this function must send all the processed images in pdf format
-@user_router.get("/{user_id}/projects/{project_id}/results")
-async def get_results():
-    return {"hello": "results"}
+@user_router.get("/{user_id}/projects/{project_id}/process")
+async def process_images_for_predictions(user_id:str, project_id:str):
+    print("prediction started")
+    try:
+        user_oid = ObjectId(user_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail = "Invaild user id format")
+    
+    user = get_user_model_from_db(user_id)
+    if user is None:
+        return HTTPException(status_code=404, detail="User not found")
+        
+    try:
+        project = next((proj for proj in user.projects if proj.id == project_id), None)
+    except:
+        print("project not found")
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    if len(project.images) == 0:
+        print("no images found in project")
+
+    processed_images_links = []
+    for image in project.images:
+        path = process_image(image)
+        result = cloudinary.uploader.upload(path)
+        processed_images_links.append(result['secure_url'])
+    
+    update_result = users_collection.update_one(
+        {"_id": user_oid, "projects._id": project_id},
+        {"$push": {"projects.$.processed": {"$each": processed_images_links}}}
+    )
+    
+    if update_result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Retrieve the updated user to return
+    updated_user = get_user_model_from_db(user_id)
+    if updated_user is None:
+        return HTTPException(status_code=404, detail="User not found")
+    project = next((proj for proj in updated_user.projects if proj.id == project_id), None)
+
+    return project
 
 # Register User
 @user_router.post("/register", response_model=User)
@@ -42,7 +85,7 @@ async def create_user(user_request: CreateUserRequest):
     
     # Save user to database
     created_user = User(username=user_request.username, password_hash=hashed_password)
-    result = users_collection.insert_one(created_user.model_dump(by_alias=True, exclude=["id"]))
+    result = users_collection.insert_one(created_user.model_dump(by_alias=True, exclude=["id"])) # type: ignore
     user = users_collection.find_one({"_id":result.inserted_id})
     print("New User Registered")
     return user
@@ -121,11 +164,12 @@ async def upload_images_to_project(user_id: str, project_id: str, images: list[U
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    image_urls = []
+    images = []
     for file in images:
         try:
             result = cloudinary.uploader.upload(file.file)
-            image_urls.append(result['secure_url'])
+            image = Img(name="name", url="", is_processed=False)
+            images.append(image)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to upload image: {e}")
 
@@ -141,9 +185,7 @@ async def upload_images_to_project(user_id: str, project_id: str, images: list[U
     updated_user = get_user_model_from_db(user_id)
     if updated_user is None:
         return HTTPException(status_code=404, detail="User not found")
-    print(updated_user)
     project = next((proj for proj in updated_user.projects if proj.id == project_id), None)
-    print(project)
     return project
 
 @user_router.delete("/{user_id}/projects/{project_id}")
@@ -209,6 +251,9 @@ async def delete_image_in_project(user_id:str, project_id:str, index:int):
 
     if project.images: del project.images[index]
 
+    print(len(project.processed))
+    if len(project.processed) > index:
+        del project.processed[index]
 
     # Update the specific project to clear images
     result = users_collection.update_one(
@@ -216,10 +261,12 @@ async def delete_image_in_project(user_id:str, project_id:str, index:int):
         {"$set": {"projects.$.images": project.images}}
     )
 
+    result = users_collection.update_one(
+        {"_id": user_oid, "projects._id": project_id},
+        {"$set": {"projects.$.processed": project.processed}}
+    )
+
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Project couldn't be updated")
     
-    if project.images:
-        print(len(project.images))
-
     return project

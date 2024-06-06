@@ -15,4 +15,3 @@ class User(BaseModel):
         json_encoders = {
             ObjectId: str,
         }
-
