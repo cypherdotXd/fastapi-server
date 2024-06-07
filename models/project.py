@@ -12,8 +12,6 @@ class Project(BaseModel):
     # description:Optional[str] = Field()
     # createdAt:str = 
     images:list[Image] = []
-    processed:list[str] = []
-    results:Optional[list[Any]] = []
     class Config:
         populate_by_name = True
         arbitrary_types_allowed = True

@@ -7,7 +7,7 @@ class Image(BaseModel):
     name:str = Field(...)
     url:Optional[str]
     is_processed:bool = False
-    result:Optional[str]
+    processed_url:Optional[str]
     class Config:
         populate_by_name = True
         arbitrary_types_allowed = True

@@ -48,15 +48,17 @@ async def process_images_for_predictions(user_id:str, project_id:str):
     if len(project.images) == 0:
         print("no images found in project")
 
-    processed_images_links = []
+    new_images = []
     for image in project.images:
-        path = process_image(image)
+        path = process_image(image.url)
         result = cloudinary.uploader.upload(path)
-        processed_images_links.append(result['secure_url'])
+        image.is_processed = True
+        image.processed_url = result['secure_url']
+        new_images.append(image.model_dump())
     
     update_result = users_collection.update_one(
         {"_id": user_oid, "projects._id": project_id},
-        {"$push": {"projects.$.processed": {"$each": processed_images_links}}}
+        {"$set": {"projects.$.images": new_images}}
     )
     
     if update_result.matched_count == 0:
@@ -66,6 +68,7 @@ async def process_images_for_predictions(user_id:str, project_id:str):
     updated_user = get_user_model_from_db(user_id)
     if updated_user is None:
         return HTTPException(status_code=404, detail="User not found")
+    
     project = next((proj for proj in updated_user.projects if proj.id == project_id), None)
 
     return project
@@ -164,18 +167,18 @@ async def upload_images_to_project(user_id: str, project_id: str, images: list[U
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    images = []
+    image_models = []
     for file in images:
         try:
             result = cloudinary.uploader.upload(file.file)
-            image = Img(name="name", url="", is_processed=False)
-            images.append(image)
+            image_model = Img(name="name", url=result["secure_url"], is_processed=False, processed_url="")
+            image_models.append(image_model.model_dump())
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to upload image: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to upload image to cloudinary: {e}")
 
     update_result = users_collection.update_one(
         {"_id": user_oid, "projects._id": project_id},
-        {"$push": {"projects.$.images": {"$each": image_urls}}}
+        {"$push": {"projects.$.images": {"$each": image_models}}}
     )
     
     if update_result.matched_count == 0:
@@ -251,19 +254,14 @@ async def delete_image_in_project(user_id:str, project_id:str, index:int):
 
     if project.images: del project.images[index]
 
-    print(len(project.processed))
-    if len(project.processed) > index:
-        del project.processed[index]
+    new_images = []
+    for image in project.images:
+        new_images.append(image.model_dump())
 
     # Update the specific project to clear images
     result = users_collection.update_one(
         {"_id": user_oid, "projects._id": project_id},
-        {"$set": {"projects.$.images": project.images}}
-    )
-
-    result = users_collection.update_one(
-        {"_id": user_oid, "projects._id": project_id},
-        {"$set": {"projects.$.processed": project.processed}}
+        {"$set": {"projects.$.images": new_images}}
     )
 
     if result.matched_count == 0:
