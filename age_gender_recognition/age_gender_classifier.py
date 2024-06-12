@@ -99,8 +99,35 @@ def process_image(image_url):
         
         cv2.rectangle(frame, (faceBox[0], faceBox[1]), (faceBox[2], faceBox[3]), (0, 255, 0), 2)
 
-        cv2.putText(frame, f'{gender}, {age}', (faceBox[0] + 5, faceBox[1] + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2, cv2.LINE_AA)
-        # cv2.putText(frame, f'{gender}, {age}', (faceBox[0], faceBox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2, cv2.LINE_AA)
+        # Text parameters
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.9
+        font_thickness = 2
+        font_color = (0, 255, 255)  # Yellow color
+        background_color = (0, 0, 0)  # Black color
+
+        # Calculate text size
+        (gender_text_width, gender_text_height), _ = cv2.getTextSize(f"{gender},", font, font_scale, font_thickness)
+        (age_text_width, age_text_height), _ = cv2.getTextSize(f"{age}", font, font_scale, font_thickness)
+
+        # Position for the first line (gender)
+        gender_position = (faceBox[0] + 5, faceBox[1] + 20)
+
+        # Position for the second line (age)
+        age_position = (faceBox[0] + 5, faceBox[1] + 20 + gender_text_height + 10)  # 10 is the space between lines
+
+        # Draw background rectangles
+        cv2.rectangle(frame, (gender_position[0], gender_position[1] - gender_text_height - 10), 
+                    (gender_position[0] + gender_text_width, gender_position[1] + 10), background_color, -1)
+        cv2.rectangle(frame, (age_position[0], age_position[1] - age_text_height - 10), 
+                    (age_position[0] + age_text_width, age_position[1] + 10), background_color, -1)
+
+        # Put gender text
+        cv2.putText(frame, f"{gender},", gender_position, font, font_scale, font_color, font_thickness, cv2.LINE_AA)
+
+        # Put age text
+        cv2.putText(frame, f"{age}", age_position, font, font_scale, font_color, font_thickness, cv2.LINE_AA)
+
 
     # Display the result
     temp_path = "temp/output_image.jpg"
